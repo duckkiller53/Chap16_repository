@@ -8,11 +8,14 @@
 
 import UIKit
 import SafariServices
+import BRYXBanner
 
 class DetailViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     
     var isStarred: Bool?
     var alertController: UIAlertController?
+    var notConnectedBanner: Banner?
+    
     @IBOutlet weak var tableView: UITableView!
     
     var gist: Gist? {
@@ -21,6 +24,20 @@ class DetailViewController: UIViewController, UITableViewDataSource, UITableView
             self.configureView()
         }
     }
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Do any additional setup after loading the view, typically from a nib.
+        self.configureView()
+    }
+    
+    override func viewWillDisappear(animated: Bool) {
+        if let existingBanner = self.notConnectedBanner {
+            existingBanner.dismiss()
+        }
+        super.viewWillDisappear(animated)
+    }
+
     
     func configureView() {
         // Update the user interface for the detail item.
@@ -50,8 +67,24 @@ class DetailViewController: UIViewController, UITableViewDataSource, UITableView
                         self.alertController?.addAction(okAction)
                         self.presentViewController(self.alertController!, animated:true,
                             completion: nil)
-                    }
+                    } else if error.code == NSURLErrorNotConnectedToInternet {
+                        // show not connected error & tell em to try again when they do have a conn
+                        
+                        // check for existing banner
+                        if let existingBanner = self.notConnectedBanner
+                        {
+                            existingBanner.dismiss()
+                        }
+                        self.notConnectedBanner = Banner(title: "No Internet Connection",
+                            subtitle: "Can not display starred status. " +
+                        "Try again when you're connected to the internet",
+                            image: nil,
+                            backgroundColor: UIColor.orangeColor())
+                        self.notConnectedBanner?.dismissesOnSwipe = true
+                        self.notConnectedBanner?.show(duration: nil)
+                    }                    
                 }
+                
                 
                 if let status = result.value where self.isStarred == nil
                 {
@@ -129,13 +162,6 @@ class DetailViewController: UIViewController, UITableViewDataSource, UITableView
             })
         }
     }
-
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        // Do any additional setup after loading the view, typically from a nib.
-        self.configureView()
-    }
     
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
@@ -182,7 +208,7 @@ class DetailViewController: UIViewController, UITableViewDataSource, UITableView
         {
             if indexPath.row == 0
             {
-                cell.textLabel?.text = gist?.description
+                cell.textLabel?.text = gist?.gistDescription
             } else if indexPath.row == 1 {
                 cell.textLabel?.text = gist?.ownerLogin
             } else {

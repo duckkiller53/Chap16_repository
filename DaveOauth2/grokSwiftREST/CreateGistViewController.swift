@@ -123,7 +123,6 @@ class CreateGistViewController: XLFormViewController
                 return
             }
             
-            print(successValue)
             self.navigationController?.popViewControllerAnimated(true)
         })
     }

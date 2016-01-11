@@ -35,6 +35,10 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
             self.navigationItem.rightBarButtonItem = nil
         }
         
+        // clear gists so they can't get shown for the wrong list
+        self.gists = [Gist]()
+        self.tableView.reloadData()
+        
         loadGists(nil)
     }
   
@@ -78,6 +82,13 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
     }
     
   }
+    
+    override func viewWillDisappear(animated: Bool) {
+        if let existingBanner = self.notConnectedBanner {
+            existingBanner.dismiss()
+        }
+        super.viewWillDisappear(animated)
+    }
    
   // show the login screen.
   func loadInitialData()
@@ -89,13 +100,28 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
         {
             print(error)
             self.isLoading = false
-            // TODO: handle error
-            // Something went wrong, try again
-            self.showOAuthLoginView()
+            
+            if error.domain == NSURLErrorDomain && error.code == NSURLErrorNotConnectedToInternet {
+                // show not connected error & tell em to try again when they do have a connection
+                // check for existing banner
+                if let existingBanner = self.notConnectedBanner {
+                    existingBanner.dismiss()
+                }
+                self.notConnectedBanner = Banner(title: "No Internet Connection",
+                    subtitle: "Could not load gists.  Try again when your're connected to the internet",
+                    image: nil,
+                    backgroundColor: UIColor.redColor())
+                self.notConnectedBanner?.dismissesOnSwipe = true
+                self.notConnectedBanner?.show(duration: nil)
+            } else {
+                // Something went wrong, try again
+                self.showOAuthLoginView()
+            }
         } else {
             self.loadGists(nil)
         }
-    }
+        
+  }
     
     if(!GitHubAPIManager.sharedInstance.hasOAuthToken()) {
         self.showOAuthLoginView()
@@ -161,8 +187,6 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
         // Detect not being able to load the OAuth URL
             if (!didLoadSuccessfully)
             {
-                let defaults = NSUserDefaults.standardUserDefaults()
-                defaults.setBool(false, forKey: "loadingOAuthToken")
                 if let completionHandler =
                     GitHubAPIManager.sharedInstance.OAuthTokenCompletionHandler
                 {
@@ -202,7 +226,6 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
                 self.isLoading = false
                 if let error = result.error
                 {
-                    
                     if error.domain == NSURLErrorDomain
                     {
                       if error.code == NSURLErrorUserAuthenticationRequired
@@ -210,6 +233,22 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
                         self.showOAuthLoginView()
                       } else if error.code == NSURLErrorNotConnectedToInternet {
                         
+                        // load from saved gists if no internet
+                        let path:Path
+                        if self.gistSegmentedControl.selectedSegmentIndex == 0 {
+                            path = .Public
+                        } else if self.gistSegmentedControl.selectedSegmentIndex == 1 {
+                            path = .Starred
+                        } else {
+                            path = .MyGists
+                        }
+                        
+                        if let archived:[Gist] = PersistenceManager.loadArray(path) {
+                            self.gists = archived
+                        } else {
+                            self.gists = [] // don't have any saved gists
+                        }
+
                         // show not connected error & tell em to try again when they do have a connection
                         // check for existing banner
                         
@@ -235,12 +274,22 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
             }
             
             if let fetchedGists = result.value {
-                if self.nextPageURLString != nil {
+                if urlToLoad != nil {
                     self.gists += fetchedGists
                 } else {
                     self.gists = fetchedGists
                 }
             }
+            
+            let path:Path
+            if self.gistSegmentedControl.selectedSegmentIndex == 0 {
+                path = .Public
+            } else if self.gistSegmentedControl.selectedSegmentIndex == 1 {
+                path = .Starred
+            } else {
+                path = .MyGists
+            }
+            PersistenceManager.saveArray(self.gists, path: path)
             
             // update "last updated" title for refresh control
             let now = NSDate()
@@ -327,7 +376,7 @@ class MasterViewController: UITableViewController, LoginViewDelegate, SFSafariVi
     let cell = tableView.dequeueReusableCellWithIdentifier("Cell", forIndexPath: indexPath)
     
     let gist = gists[indexPath.row]
-    cell.textLabel!.text = gist.description
+    cell.textLabel!.text = gist.gistDescription
     cell.detailTextLabel!.text = gist.ownerLogin
     cell.imageView?.image = nil
     
